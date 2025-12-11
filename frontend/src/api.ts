@@ -12,11 +12,25 @@ export interface StatusResponse {
   step_count: number;
 }
 
-export interface InitRequest {
+export interface APIModelConfig {
   base_url?: string;
+  api_key?: string;
   model_name?: string;
-  device_id?: string | null;
+  max_tokens?: number;
+  temperature?: number;
+  top_p?: number;
+  frequency_penalty?: number;
+}
+
+export interface APIAgentConfig {
   max_steps?: number;
+  device_id?: string | null;
+  verbose?: boolean;
+}
+
+export interface InitRequest {
+  model_config?: APIModelConfig;
+  agent_config?: APIAgentConfig;
 }
 
 export interface ScreenshotRequest {

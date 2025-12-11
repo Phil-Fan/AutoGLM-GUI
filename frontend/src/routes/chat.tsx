@@ -37,6 +37,13 @@ function ChatComponent() {
   const [error, setError] = useState<string | null>(null);
   const [screenshot, setScreenshot] = useState<ScreenshotResponse | null>(null);
   const [currentStream, setCurrentStream] = useState<any>(null);
+  const [config, setConfig] = useState({
+    baseUrl: '',
+    apiKey: '',
+    modelName: '',
+  });
+  const [showConfig, setShowConfig] = useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const screenshotFetchingRef = useRef(false);
 
@@ -61,14 +68,18 @@ function ChatComponent() {
         if (status.initialized) {
           setInitialized(true);
         } else {
-          // 自动初始化
-          setError(null);
-          await initAgent();
-          setInitialized(true);
+          // 尝试自动初始化（使用后端默认值）
+          try {
+            await initAgent();
+            setInitialized(true);
+          } catch {
+            // 自动初始化失败，等待用户手动配置
+            setInitialized(false);
+          }
         }
       } catch (error) {
         setInitialized(false);
-        setError('初始化失败，请确保后端服务正在运行');
+        setError('无法连接到后端服务');
       }
     };
 
@@ -109,10 +120,17 @@ function ChatComponent() {
   const handleInit = async () => {
     setError(null);
     try {
-      await initAgent();
+      await initAgent({
+        model_config: {
+          base_url: config.baseUrl || undefined,
+          api_key: config.apiKey || undefined,
+          model_name: config.modelName || undefined,
+        },
+      });
       setInitialized(true);
+      setShowConfig(false);
     } catch {
-      setError('初始化失败，请确保后端服务正在运行');
+      setError('初始化失败，请检查配置或确保后端服务正在运行');
     }
   };
 
@@ -232,7 +250,62 @@ function ChatComponent() {
 
 
   return (
-    <div className="h-full flex items-center justify-center p-4 gap-4">
+    <div className="h-full flex items-center justify-center p-4 gap-4 relative">
+      {/* Config Modal */}
+      {showConfig && (
+        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 rounded-2xl">
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl w-96 shadow-xl border border-gray-200 dark:border-gray-700">
+            <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-gray-100">Agent 配置</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Base URL</label>
+                <input
+                  type="text"
+                  value={config.baseUrl}
+                  onChange={e => setConfig({ ...config, baseUrl: e.target.value })}
+                  placeholder="留空使用默认值"
+                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">API Key</label>
+                <input
+                  type="password"
+                  value={config.apiKey}
+                  onChange={e => setConfig({ ...config, apiKey: e.target.value })}
+                  placeholder="留空使用默认值"
+                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Model Name</label>
+                <input
+                  type="text"
+                  value={config.modelName}
+                  onChange={e => setConfig({ ...config, modelName: e.target.value })}
+                  placeholder="留空使用默认值"
+                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+              <div className="flex justify-end gap-2 mt-6">
+                <button
+                  onClick={() => setShowConfig(false)}
+                  className="px-4 py-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleInit}
+                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                >
+                  确认初始化
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Chatbox */}
       <div className="flex flex-col w-full max-w-2xl h-[750px] border border-gray-200 dark:border-gray-700 rounded-2xl shadow-lg bg-white dark:bg-gray-800">
         {/* 头部 */}
@@ -241,10 +314,10 @@ function ChatComponent() {
           <div className="flex gap-2">
             {!initialized ? (
               <button
-                onClick={handleInit}
+                onClick={() => setShowConfig(true)}
                 className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center justify-center"
               >
-                初始化 Agent
+                配置 Agent
               </button>
             ) : (
               <span className="px-3 py-1 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded-full text-sm flex items-center justify-center">

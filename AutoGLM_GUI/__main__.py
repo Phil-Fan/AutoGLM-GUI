@@ -79,6 +79,11 @@ def main() -> None:
         help=f"Model name to use (default: {DEFAULT_MODEL_NAME})",
     )
     parser.add_argument(
+        "--apikey",
+        default=None,
+        help="API key for the model API (default: from AUTOGLM_API_KEY or unset)",
+    )
+    parser.add_argument(
         "--host",
         default="127.0.0.1",
         help="Host to bind the server to (default: 127.0.0.1)",
@@ -123,10 +128,14 @@ def main() -> None:
     # Set model configuration via environment variables (survives reload)
     os.environ["AUTOGLM_BASE_URL"] = args.base_url
     os.environ["AUTOGLM_MODEL_NAME"] = args.model
+    if args.apikey is not None:
+        os.environ["AUTOGLM_API_KEY"] = args.apikey
 
     # Also set directly for non-reload mode
     server.DEFAULT_BASE_URL = args.base_url
     server.DEFAULT_MODEL_NAME = args.model
+    if args.apikey is not None:
+        server.DEFAULT_API_KEY = args.apikey
 
     # Display startup banner
     print()
@@ -139,6 +148,8 @@ def main() -> None:
     print("  Model Configuration:")
     print(f"    Base URL: {args.base_url}")
     print(f"    Model:    {args.model}")
+    if args.apikey is not None:
+        print("    API Key:  (provided via --apikey)")
     print()
     print("=" * 50)
     print("  Press Ctrl+C to stop")

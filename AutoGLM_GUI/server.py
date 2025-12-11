@@ -11,7 +11,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from AutoGLM_GUI.phone_agent import PhoneAgent
 from AutoGLM_GUI.phone_agent.adb import get_screenshot
@@ -41,6 +41,7 @@ agent: PhoneAgent | None = None
 # 默认配置 (优先从环境变量读取，支持 reload 模式)
 DEFAULT_BASE_URL: str = os.getenv("AUTOGLM_BASE_URL", "")
 DEFAULT_MODEL_NAME: str = os.getenv("AUTOGLM_MODEL_NAME", "autoglm-phone-9b")
+DEFAULT_API_KEY: str = os.getenv("AUTOGLM_API_KEY", "EMPTY")
 
 
 def _non_blocking_takeover(message: str) -> None:
@@ -49,11 +50,25 @@ def _non_blocking_takeover(message: str) -> None:
 
 
 # 请求/响应模型
-class InitRequest(BaseModel):
+class APIModelConfig(BaseModel):
     base_url: str | None = None
+    api_key: str | None = None
     model_name: str | None = None
-    device_id: str | None = None
+    max_tokens: int = 3000
+    temperature: float = 0.0
+    top_p: float = 0.85
+    frequency_penalty: float = 0.2
+
+
+class APIAgentConfig(BaseModel):
     max_steps: int = 100
+    device_id: str | None = None
+    verbose: bool = True
+
+
+class InitRequest(BaseModel):
+    model: APIModelConfig | None = Field(default=None, alias="model_config")
+    agent: APIAgentConfig | None = Field(default=None, alias="agent_config")
 
 
 class ChatRequest(BaseModel):
@@ -91,24 +106,34 @@ async def init_agent(request: InitRequest) -> dict:
     """初始化 PhoneAgent。"""
     global agent
 
+    # 提取配置或使用空对象
+    req_model_config = request.model or APIModelConfig()
+    req_agent_config = request.agent or APIAgentConfig()
+
     # 使用请求参数或默认值
-    base_url = request.base_url or DEFAULT_BASE_URL
-    model_name = request.model_name or DEFAULT_MODEL_NAME
+    base_url = req_model_config.base_url or DEFAULT_BASE_URL
+    api_key = req_model_config.api_key or DEFAULT_API_KEY
+    model_name = req_model_config.model_name or DEFAULT_MODEL_NAME
 
     if not base_url:
         raise HTTPException(
-            status_code=400, detail="base_url is required"
+            status_code=400, detail="base_url is required (in model_config or env)"
         )
 
     model_config = ModelConfig(
         base_url=base_url,
+        api_key=api_key,
         model_name=model_name,
+        max_tokens=req_model_config.max_tokens,
+        temperature=req_model_config.temperature,
+        top_p=req_model_config.top_p,
+        frequency_penalty=req_model_config.frequency_penalty,
     )
 
     agent_config = AgentConfig(
-        max_steps=request.max_steps,
-        device_id=request.device_id,
-        verbose=True,
+        max_steps=req_agent_config.max_steps,
+        device_id=req_agent_config.device_id,
+        verbose=req_agent_config.verbose,
     )
 
     agent = PhoneAgent(
