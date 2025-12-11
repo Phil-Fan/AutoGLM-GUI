@@ -248,6 +248,12 @@ function ChatComponent() {
     await resetChat();
   };
 
+  const handleInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      handleSend();
+    }
+  };
 
   return (
     <div className="h-full flex items-center justify-center p-4 gap-4 relative">
@@ -423,6 +429,7 @@ function ChatComponent() {
               type="text"
               value={input}
               onChange={e => setInput(e.target.value)}
+              onKeyDown={handleInputKeyDown}
               placeholder={initialized ? '输入任务描述...' : '请先初始化 Agent'}
               disabled={!initialized || loading}
               className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
