@@ -1,6 +1,6 @@
 [project]
 name = "autoglm-gui"
-version = "0.2.0"
+version = "0.2.1"
 description = "Web GUI for AutoGLM Phone Agent - AI-powered Android automation"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -23,7 +23,7 @@ classifiers = [
 dependencies = [
     "fastapi>=0.124.0",
     "openai>=2.9.0",
-    "phone-agent",
+    "phone-agent @ git+https://github.com/zai-org/Open-AutoGLM.git@a3b8e83ee9012319b1fbfb8d4989b73c1435ee23",
     "pillow>=11.3.0",
     "uvicorn[standard]>=0.38.0",
 ]
@@ -50,3 +50,6 @@ phone-agent = { git = "https://github.com/zai-org/Open-AutoGLM.git", rev = "a3b8
 
 [tool.hatch.build]
 artifacts = ["AutoGLM_GUI/static/**/*"]
+
+[tool.hatch.metadata]
+allow-direct-references = true

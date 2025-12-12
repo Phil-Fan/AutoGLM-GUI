@@ -36,12 +36,12 @@ wheels = [
 
 [[package]]
 name = "autoglm-gui"
-version = "0.2.0"
+version = "0.2.1"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
     { name = "openai" },
-    { name = "phone-agent" },
+    { name = "phone-agent", git = "https://github.com/zai-org/Open-AutoGLM.git?rev=a3b8e83ee9012319b1fbfb8d4989b73c1435ee23" },
     { name = "pillow" },
     { name = "uvicorn", extra = ["standard"] },
 ]
