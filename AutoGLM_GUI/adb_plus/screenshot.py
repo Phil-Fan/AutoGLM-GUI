@@ -10,7 +10,6 @@ import base64
 import subprocess
 from dataclasses import dataclass
 from io import BytesIO
-from typing import Iterable
 
 from PIL import Image
 
@@ -72,9 +71,7 @@ def capture_screenshot(
     return _fallback_screenshot()
 
 
-def _try_capture(
-    device_id: str | None, adb_path: str, timeout: int
-) -> bytes | None:
+def _try_capture(device_id: str | None, adb_path: str, timeout: int) -> bytes | None:
     """Run exec-out screencap and return raw bytes or None on failure."""
     cmd: list[str | bytes] = [adb_path]
     if device_id:

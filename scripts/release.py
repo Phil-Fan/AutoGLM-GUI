@@ -76,7 +76,10 @@ def update_pyproject_version(new_version: str) -> bool:
 
     content = PYPROJECT_PATH.read_text()
     new_content = re.sub(
-        r'^version\s*=\s*"[^"]+"', f'version = "{new_version}"', content, flags=re.MULTILINE
+        r'^version\s*=\s*"[^"]+"',
+        f'version = "{new_version}"',
+        content,
+        flags=re.MULTILINE,
     )
 
     if content == new_content:
@@ -84,7 +87,7 @@ def update_pyproject_version(new_version: str) -> bool:
         return False
 
     PYPROJECT_PATH.write_text(new_content)
-    print(f"Updated pyproject.toml: version = \"{new_version}\"")
+    print(f'Updated pyproject.toml: version = "{new_version}"')
     return True
 
 
@@ -94,7 +97,7 @@ def git_commit_version(version: str, dry_run: bool = False) -> bool:
 
     if dry_run:
         print("[DRY RUN] Would run: git add pyproject.toml")
-        print(f"[DRY RUN] Would run: git commit -m \"release v{version}\"")
+        print(f'[DRY RUN] Would run: git commit -m "release v{version}"')
         return True
 
     try:
@@ -186,7 +189,9 @@ def run_uv_sync() -> bool:
 
 def main() -> int:
     """Main release process."""
-    parser = argparse.ArgumentParser(description="Release AutoGLM-GUI with version bump")
+    parser = argparse.ArgumentParser(
+        description="Release AutoGLM-GUI with version bump"
+    )
     bump_group = parser.add_mutually_exclusive_group()
     bump_group.add_argument(
         "--major", action="store_true", help="Bump major version (X.0.0)"
@@ -201,7 +206,9 @@ def main() -> int:
         "--version", type=str, help="Set specific version (e.g., 1.2.3)"
     )
     parser.add_argument(
-        "--dry-run", action="store_true", help="Show what would be done without making changes"
+        "--dry-run",
+        action="store_true",
+        help="Show what would be done without making changes",
     )
 
     args = parser.parse_args()

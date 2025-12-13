@@ -12,7 +12,9 @@ import webbrowser
 DEFAULT_MODEL_NAME = "autoglm-phone-9b"
 
 
-def find_available_port(start_port: int = 8000, max_attempts: int = 100, host: str = "127.0.0.1") -> int:
+def find_available_port(
+    start_port: int = 8000, max_attempts: int = 100, host: str = "127.0.0.1"
+) -> int:
     """Find an available port starting from start_port.
 
     Args:
@@ -52,7 +54,9 @@ def open_browser(host: str, port: int, delay: float = 1.5) -> None:
 
     def _open():
         time.sleep(delay)
-        url = f"http://127.0.0.1:{port}" if host == "0.0.0.0" else f"http://{host}:{port}"
+        url = (
+            f"http://127.0.0.1:{port}" if host == "0.0.0.0" else f"http://{host}:{port}"
+        )
         try:
             webbrowser.open(url)
         except Exception as e:

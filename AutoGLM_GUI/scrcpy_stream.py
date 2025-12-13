@@ -104,6 +104,7 @@ class ScrcpyStreamer:
         except Exception as e:
             print(f"[ScrcpyStreamer] Failed to start: {e}")
             import traceback
+
             traceback.print_exc()
             self.stop()
             raise RuntimeError(f"Failed to start scrcpy server: {e}") from e
@@ -124,7 +125,7 @@ class ScrcpyStreamer:
         # Method 2: Find and kill by PID (more reliable)
         cmd = cmd_base + [
             "shell",
-            "ps -ef | grep 'app_process.*scrcpy' | grep -v grep | awk '{print $2}' | xargs kill -9"
+            "ps -ef | grep 'app_process.*scrcpy' | grep -v grep | awk '{print $2}' | xargs kill -9",
         ]
         process = await asyncio.create_subprocess_exec(
             *cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
@@ -200,9 +201,7 @@ class ScrcpyStreamer:
 
             # Capture stderr to see error messages
             self.scrcpy_process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
+                *cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
             )
 
             # Wait for server to start
@@ -217,12 +216,16 @@ class ScrcpyStreamer:
                 # Check if it's an "Address already in use" error
                 if "Address already in use" in error_msg:
                     if attempt < max_retries - 1:
-                        print(f"[ScrcpyStreamer] Address in use, retrying in {retry_delay}s (attempt {attempt + 1}/{max_retries})...")
+                        print(
+                            f"[ScrcpyStreamer] Address in use, retrying in {retry_delay}s (attempt {attempt + 1}/{max_retries})..."
+                        )
                         await self._cleanup_existing_server()
                         await asyncio.sleep(retry_delay)
                         continue
                     else:
-                        raise RuntimeError(f"scrcpy server failed after {max_retries} attempts: {error_msg}")
+                        raise RuntimeError(
+                            f"scrcpy server failed after {max_retries} attempts: {error_msg}"
+                        )
                 else:
                     raise RuntimeError(f"scrcpy server exited immediately: {error_msg}")
 
@@ -239,7 +242,9 @@ class ScrcpyStreamer:
         # Increase socket buffer size for high-resolution video
         # Default is often 64KB, but complex frames can be 200-500KB
         try:
-            self.tcp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 2 * 1024 * 1024)  # 2MB
+            self.tcp_socket.setsockopt(
+                socket.SOL_SOCKET, socket.SO_RCVBUF, 2 * 1024 * 1024
+            )  # 2MB
             print("[ScrcpyStreamer] Set socket receive buffer to 2MB")
         except OSError as e:
             print(f"[ScrcpyStreamer] Warning: Failed to set socket buffer size: {e}")
@@ -267,9 +272,9 @@ class ScrcpyStreamer:
 
         while i < data_len - 4:
             # Look for start codes: 0x00 0x00 0x00 0x01 or 0x00 0x00 0x01
-            if data[i:i+4] == b'\x00\x00\x00\x01':
+            if data[i : i + 4] == b"\x00\x00\x00\x01":
                 start_code_len = 4
-            elif data[i:i+3] == b'\x00\x00\x01':
+            elif data[i : i + 3] == b"\x00\x00\x01":
                 start_code_len = 3
             else:
                 i += 1
@@ -285,8 +290,10 @@ class ScrcpyStreamer:
             # Find next start code to determine NAL unit size
             next_start = nal_start + 1
             while next_start < data_len - 3:
-                if (data[next_start:next_start+4] == b'\x00\x00\x00\x01' or
-                    data[next_start:next_start+3] == b'\x00\x00\x01'):
+                if (
+                    data[next_start : next_start + 4] == b"\x00\x00\x00\x01"
+                    or data[next_start : next_start + 3] == b"\x00\x00\x01"
+                ):
                     break
                 next_start += 1
             else:
@@ -309,7 +316,7 @@ class ScrcpyStreamer:
         nal_units = self._find_nal_units(data)
 
         for start, nal_type, size in nal_units:
-            nal_data = data[start:start+size]
+            nal_data = data[start : start + size]
 
             if nal_type == 7:  # SPS
                 # Only cache SPS if not yet locked
@@ -317,10 +324,16 @@ class ScrcpyStreamer:
                     # Validate: SPS should be at least 10 bytes
                     if size >= 10 and not self.cached_sps:
                         self.cached_sps = nal_data
-                        hex_preview = ' '.join(f'{b:02x}' for b in nal_data[:min(12, len(nal_data))])
-                        print(f"[ScrcpyStreamer] ✓ Cached complete SPS ({size} bytes): {hex_preview}...")
+                        hex_preview = " ".join(
+                            f"{b:02x}" for b in nal_data[: min(12, len(nal_data))]
+                        )
+                        print(
+                            f"[ScrcpyStreamer] ✓ Cached complete SPS ({size} bytes): {hex_preview}..."
+                        )
                     elif size < 10:
-                        print(f"[ScrcpyStreamer] ✗ Skipped truncated SPS ({size} bytes, too short)")
+                        print(
+                            f"[ScrcpyStreamer] ✗ Skipped truncated SPS ({size} bytes, too short)"
+                        )
 
             elif nal_type == 8:  # PPS
                 # Only cache PPS if not yet locked
@@ -328,10 +341,16 @@ class ScrcpyStreamer:
                     # Validate: PPS should be at least 6 bytes
                     if size >= 6 and not self.cached_pps:
                         self.cached_pps = nal_data
-                        hex_preview = ' '.join(f'{b:02x}' for b in nal_data[:min(12, len(nal_data))])
-                        print(f"[ScrcpyStreamer] ✓ Cached complete PPS ({size} bytes): {hex_preview}...")
+                        hex_preview = " ".join(
+                            f"{b:02x}" for b in nal_data[: min(12, len(nal_data))]
+                        )
+                        print(
+                            f"[ScrcpyStreamer] ✓ Cached complete PPS ({size} bytes): {hex_preview}..."
+                        )
                     elif size < 6:
-                        print(f"[ScrcpyStreamer] ✗ Skipped truncated PPS ({size} bytes, too short)")
+                        print(
+                            f"[ScrcpyStreamer] ✗ Skipped truncated PPS ({size} bytes, too short)"
+                        )
 
             elif nal_type == 5:  # IDR frame
                 # ✅ ALWAYS update IDR to keep the LATEST frame
@@ -340,7 +359,9 @@ class ScrcpyStreamer:
                     is_first = self.cached_idr is None
                     self.cached_idr = nal_data
                     if is_first:
-                        print(f"[ScrcpyStreamer] ✓ Cached initial IDR frame ({size} bytes)")
+                        print(
+                            f"[ScrcpyStreamer] ✓ Cached initial IDR frame ({size} bytes)"
+                        )
                     # Don't log every IDR update (too verbose)
 
         # Lock SPS/PPS once we have complete initial parameters
@@ -366,7 +387,9 @@ class ScrcpyStreamer:
             return data
 
         # Find all IDR frames
-        idr_positions = [(start, size) for start, nal_type, size in nal_units if nal_type == 5]
+        idr_positions = [
+            (start, size) for start, nal_type, size in nal_units if nal_type == 5
+        ]
 
         if not idr_positions:
             return data
@@ -386,7 +409,9 @@ class ScrcpyStreamer:
             if data[prepend_offset:idr_start] != sps_pps:
                 # Prepend SPS/PPS before this IDR
                 result.extend(sps_pps)
-                print(f"[ScrcpyStreamer] Prepended SPS/PPS before IDR at position {idr_start}")
+                print(
+                    f"[ScrcpyStreamer] Prepended SPS/PPS before IDR at position {idr_start}"
+                )
 
             # Update position to start of IDR
             last_pos = idr_start
@@ -409,11 +434,17 @@ class ScrcpyStreamer:
                 init_data += self.cached_idr
 
             # Validate data integrity
-            print(f"[ScrcpyStreamer] Returning init data:")
-            print(f"  - SPS: {len(self.cached_sps)} bytes, starts with {' '.join(f'{b:02x}' for b in self.cached_sps[:8])}")
-            print(f"  - PPS: {len(self.cached_pps)} bytes, starts with {' '.join(f'{b:02x}' for b in self.cached_pps[:8])}")
+            print("[ScrcpyStreamer] Returning init data:")
+            print(
+                f"  - SPS: {len(self.cached_sps)} bytes, starts with {' '.join(f'{b:02x}' for b in self.cached_sps[:8])}"
+            )
+            print(
+                f"  - PPS: {len(self.cached_pps)} bytes, starts with {' '.join(f'{b:02x}' for b in self.cached_pps[:8])}"
+            )
             if self.cached_idr:
-                print(f"  - IDR: {len(self.cached_idr)} bytes, starts with {' '.join(f'{b:02x}' for b in self.cached_idr[:8])}")
+                print(
+                    f"  - IDR: {len(self.cached_idr)} bytes, starts with {' '.join(f'{b:02x}' for b in self.cached_idr[:8])}"
+                )
             print(f"  - Total: {len(init_data)} bytes")
 
             return init_data
@@ -442,7 +473,9 @@ class ScrcpyStreamer:
 
             # Log large chunks (might indicate complex frames)
             if len(data) > 200 * 1024:  # > 200KB
-                print(f"[ScrcpyStreamer] Large chunk received: {len(data) / 1024:.1f} KB")
+                print(
+                    f"[ScrcpyStreamer] Large chunk received: {len(data) / 1024:.1f} KB"
+                )
 
             # Cache INITIAL complete SPS/PPS/IDR for future use
             # (Later chunks may have truncated NAL units, so we only cache once)
@@ -457,7 +490,9 @@ class ScrcpyStreamer:
         except ConnectionError:
             raise
         except Exception as e:
-            print(f"[ScrcpyStreamer] Unexpected error in read_h264_chunk: {type(e).__name__}: {e}")
+            print(
+                f"[ScrcpyStreamer] Unexpected error in read_h264_chunk: {type(e).__name__}: {e}"
+            )
             raise ConnectionError(f"Failed to read from socket: {e}") from e
 
     def stop(self) -> None:
@@ -489,7 +524,9 @@ class ScrcpyStreamer:
                 if self.device_id:
                     cmd.extend(["-s", self.device_id])
                 cmd.extend(["forward", "--remove", f"tcp:{self.port}"])
-                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)
+                subprocess.run(
+                    cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2
+                )
             except Exception:
                 pass
             self.forward_cleanup_needed = False

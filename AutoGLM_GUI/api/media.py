@@ -113,7 +113,9 @@ async def video_stream_ws(websocket: WebSocket, device_id: str | None = None):
                 await websocket.send_bytes(init_data)
                 print(f"[video/stream] Sent SPS/PPS for device {device_id}")
             else:
-                print(f"[video/stream] Warning: No cached SPS/PPS for device {device_id}")
+                print(
+                    f"[video/stream] Warning: No cached SPS/PPS for device {device_id}"
+                )
 
     streamer = scrcpy_streamers[device_id]
 
@@ -126,7 +128,9 @@ async def video_stream_ws(websocket: WebSocket, device_id: str | None = None):
                 await websocket.send_bytes(h264_chunk)
                 chunk_count += 1
                 if chunk_count % 100 == 0:
-                    print(f"[video/stream] Device {device_id}: Sent {chunk_count} chunks")
+                    print(
+                        f"[video/stream] Device {device_id}: Sent {chunk_count} chunks"
+                    )
             except ConnectionError as e:
                 print(f"[video/stream] Device {device_id}: Connection error: {e}")
                 stream_failed = True

@@ -1,9 +1,7 @@
 """Device control utilities for Android automation."""
 
-import os
 import subprocess
 import time
-from typing import List, Optional, Tuple
 
 from phone_agent.config.apps import APP_PACKAGES
 
