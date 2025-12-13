@@ -19,9 +19,9 @@ from pydantic import BaseModel, Field
 from AutoGLM_GUI.adb_plus import capture_screenshot
 from AutoGLM_GUI.scrcpy_stream import ScrcpyStreamer
 
-# 全局 scrcpy streamer 实例和锁
-scrcpy_streamer: ScrcpyStreamer | None = None
-scrcpy_lock = asyncio.Lock()
+# 全局 scrcpy streamer 实例和锁（多设备支持）
+scrcpy_streamers: dict[str, ScrcpyStreamer] = {}
+scrcpy_locks: dict[str, asyncio.Lock] = {}
 
 # 获取包版本号
 try:
@@ -40,10 +40,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 全局单例 agent
-agent: PhoneAgent | None = None
-last_model_config: ModelConfig | None = None
-last_agent_config: AgentConfig | None = None
+# 多设备实例管理
+agents: dict[str, PhoneAgent] = {}
+agent_configs: dict[str, tuple[ModelConfig, AgentConfig]] = {}
 
 # 默认配置 (优先从环境变量读取，支持 reload 模式)
 DEFAULT_BASE_URL: str = os.getenv("AUTOGLM_BASE_URL", "")
@@ -82,6 +81,7 @@ class InitRequest(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
+    device_id: str  # 设备 ID（必填）
 
 
 class ChatResponse(BaseModel):
@@ -94,6 +94,10 @@ class StatusResponse(BaseModel):
     version: str
     initialized: bool
     step_count: int
+
+
+class ResetRequest(BaseModel):
+    device_id: str  # 设备 ID（必填）
 
 
 class ScreenshotRequest(BaseModel):
@@ -175,12 +179,19 @@ class TouchUpResponse(BaseModel):
 # API 端点
 @app.post("/api/init")
 def init_agent(request: InitRequest) -> dict:
-    """初始化 PhoneAgent。"""
-    global agent, last_model_config, last_agent_config
+    """初始化 PhoneAgent（多设备支持）。"""
+    global agents, agent_configs
 
     # 提取配置或使用空对象
     req_model_config = request.model or APIModelConfig()
     req_agent_config = request.agent or APIAgentConfig()
+
+    # 必须指定 device_id
+    device_id = req_agent_config.device_id
+    if not device_id:
+        raise HTTPException(
+            status_code=400, detail="device_id is required in agent_config"
+        )
 
     # 使用请求参数或默认值
     base_url = req_model_config.base_url or DEFAULT_BASE_URL
@@ -204,23 +215,27 @@ def init_agent(request: InitRequest) -> dict:
 
     agent_config = AgentConfig(
         max_steps=req_agent_config.max_steps,
-        device_id=req_agent_config.device_id,
+        device_id=device_id,
         lang=req_agent_config.lang,
         system_prompt=req_agent_config.system_prompt,
         verbose=req_agent_config.verbose,
     )
 
-    agent = PhoneAgent(
+    # 创建并存储 Agent
+    agents[device_id] = PhoneAgent(
         model_config=model_config,
         agent_config=agent_config,
         takeover_callback=_non_blocking_takeover,
     )
 
-    # 记录最新配置，便于 reset 时自动重建
-    last_model_config = model_config
-    last_agent_config = agent_config
+    # 记录配置，便于 reset 时自动重建
+    agent_configs[device_id] = (model_config, agent_config)
 
-    return {"success": True, "message": "Agent initialized"}
+    return {
+        "success": True,
+        "device_id": device_id,
+        "message": f"Agent initialized for device {device_id}",
+    }
 
 
 @app.post("/api/chat", response_model=ChatResponse)
@@ -245,13 +260,19 @@ def chat(request: ChatRequest) -> ChatResponse:
 
 @app.post("/api/chat/stream")
 def chat_stream(request: ChatRequest):
-    """发送任务给 Agent 并实时推送执行进度（SSE）。"""
-    global agent
+    """发送任务给 Agent 并实时推送执行进度（SSE，多设备支持）。"""
+    global agents
 
-    if agent is None:
+    device_id = request.device_id
+
+    # 检查设备是否已初始化
+    if device_id not in agents:
         raise HTTPException(
-            status_code=400, detail="Agent not initialized. Call /api/init first."
+            status_code=400,
+            detail=f"Device {device_id} not initialized. Call /api/init first.",
         )
+
+    agent = agents[device_id]
 
     def event_generator():
         """SSE 事件生成器"""
@@ -320,60 +341,120 @@ def chat_stream(request: ChatRequest):
 
 
 @app.get("/api/status", response_model=StatusResponse)
-def get_status() -> StatusResponse:
-    """获取 Agent 状态和版本信息。"""
-    global agent
+def get_status(device_id: str | None = None) -> StatusResponse:
+    """获取 Agent 状态和版本信息（多设备支持）。"""
+    global agents
 
+    if device_id is None:
+        # 返回全局状态（兼容旧版）
+        return StatusResponse(
+            version=__version__,
+            initialized=len(agents) > 0,
+            step_count=0,
+        )
+
+    # 返回特定设备状态
+    if device_id not in agents:
+        return StatusResponse(
+            version=__version__,
+            initialized=False,
+            step_count=0,
+        )
+
+    agent = agents[device_id]
     return StatusResponse(
         version=__version__,
-        initialized=agent is not None,
-        step_count=agent.step_count if agent else 0,
+        initialized=True,
+        step_count=agent.step_count,
     )
 
 
 @app.post("/api/reset")
-def reset_agent() -> dict:
-    """重置 Agent 状态。"""
-    global agent, last_model_config, last_agent_config
+def reset_agent(request: ResetRequest) -> dict:
+    """重置 Agent 状态（多设备支持）。"""
+    global agents, agent_configs
 
-    reinitialized = False
+    device_id = request.device_id
 
-    # 先清空当前实例
-    if agent is not None:
-        agent.reset()
+    if device_id not in agents:
+        raise HTTPException(status_code=404, detail=f"Device {device_id} not found")
 
-    # 如有历史配置，自动重建实例；否则置空
-    if last_model_config and last_agent_config:
-        agent = PhoneAgent(
-            model_config=last_model_config,
-            agent_config=last_agent_config,
+    agent = agents[device_id]
+    agent.reset()
+
+    # 可选：使用缓存配置重新初始化
+    if device_id in agent_configs:
+        model_config, agent_config = agent_configs[device_id]
+        agents[device_id] = PhoneAgent(
+            model_config=model_config,
+            agent_config=agent_config,
             takeover_callback=_non_blocking_takeover,
         )
-        reinitialized = True
-    else:
-        agent = None
 
     return {
         "success": True,
-        "message": "Agent reset",
-        "reinitialized": reinitialized,
+        "device_id": device_id,
+        "message": f"Agent reset for device {device_id}",
     }
 
 
-@app.post("/api/video/reset")
-async def reset_video_stream() -> dict:
-    """Reset video stream (cleanup scrcpy server)."""
-    global scrcpy_streamer
+class DeviceListResponse(BaseModel):
+    devices: list[dict]
 
-    async with scrcpy_lock:
-        if scrcpy_streamer is not None:
-            print("[video/reset] Stopping existing streamer...")
-            scrcpy_streamer.stop()
-            scrcpy_streamer = None
-            print("[video/reset] Streamer reset complete")
-            return {"success": True, "message": "Video stream reset"}
+
+@app.get("/api/devices", response_model=DeviceListResponse)
+def list_devices() -> DeviceListResponse:
+    """列出所有 ADB 设备。"""
+    from phone_agent.adb import list_devices as adb_list
+
+    global agents
+
+    adb_devices = adb_list()
+
+    return DeviceListResponse(
+        devices=[
+            {
+                "id": d.device_id,
+                "model": d.model or "Unknown",
+                "status": d.status,
+                "connection_type": d.connection_type.value,
+                "is_initialized": d.device_id in agents,
+            }
+            for d in adb_devices
+        ]
+    )
+
+
+@app.post("/api/video/reset")
+async def reset_video_stream(device_id: str | None = None) -> dict:
+    """Reset video stream (cleanup scrcpy server，多设备支持)."""
+    global scrcpy_streamers, scrcpy_locks
+
+    if device_id:
+        # 重置特定设备的流
+        if device_id in scrcpy_locks:
+            async with scrcpy_locks[device_id]:
+                if device_id in scrcpy_streamers:
+                    print(f"[video/reset] Stopping streamer for device {device_id}")
+                    scrcpy_streamers[device_id].stop()
+                    del scrcpy_streamers[device_id]
+                    print(f"[video/reset] Streamer reset for device {device_id}")
+                    return {"success": True, "message": f"Video stream reset for device {device_id}"}
+                else:
+                    return {"success": True, "message": f"No active video stream for device {device_id}"}
         else:
-            return {"success": True, "message": "No active video stream"}
+            return {"success": True, "message": f"No video stream for device {device_id}"}
+    else:
+        # 重置所有设备的流
+        device_ids = list(scrcpy_streamers.keys())
+        for dev_id in device_ids:
+            if dev_id in scrcpy_locks:
+                async with scrcpy_locks[dev_id]:
+                    if dev_id in scrcpy_streamers:
+                        scrcpy_streamers[dev_id].stop()
+                        del scrcpy_streamers[dev_id]
+        print("[video/reset] All streamers reset")
+        return {"success": True, "message": "All video streams reset"}
 
 
 @app.post("/api/screenshot", response_model=ScreenshotResponse)
@@ -493,47 +574,61 @@ def control_touch_up(request: TouchUpRequest) -> TouchUpResponse:
 
 
 @app.websocket("/api/video/stream")
-async def video_stream_ws(websocket: WebSocket):
-    """Stream real-time H.264 video from scrcpy server via WebSocket."""
-    global scrcpy_streamer
+async def video_stream_ws(websocket: WebSocket, device_id: str | None = None):
+    """Stream real-time H.264 video from scrcpy server via WebSocket（多设备支持）."""
+    global scrcpy_streamers, scrcpy_locks
 
     await websocket.accept()
-    print("[video/stream] WebSocket connection accepted")
 
-    # Use global lock to prevent concurrent streamer initialization
-    async with scrcpy_lock:
+    if not device_id:
+        await websocket.send_json({"error": "device_id is required"})
+        return
+
+    print(f"[video/stream] WebSocket connection for device {device_id}")
+
+    # 为设备创建锁（如果不存在）
+    if device_id not in scrcpy_locks:
+        scrcpy_locks[device_id] = asyncio.Lock()
+
+    # 使用设备级别的锁
+    async with scrcpy_locks[device_id]:
         # Reuse existing streamer if available
-        if scrcpy_streamer is None:
-            print("[video/stream] Creating new streamer instance...")
-            scrcpy_streamer = ScrcpyStreamer(max_size=1280, bit_rate=4_000_000)
+        if device_id not in scrcpy_streamers:
+            print(f"[video/stream] Creating streamer for device {device_id}")
+            scrcpy_streamers[device_id] = ScrcpyStreamer(
+                device_id=device_id, max_size=1280, bit_rate=4_000_000
+            )
 
             try:
-                print("[video/stream] Starting scrcpy server...")
-                await scrcpy_streamer.start()
-                print("[video/stream] Scrcpy server started successfully")
+                print(f"[video/stream] Starting scrcpy server for device {device_id}")
+                await scrcpy_streamers[device_id].start()
+                print(f"[video/stream] Scrcpy server started for device {device_id}")
             except Exception as e:
                 import traceback
+
                 print(f"[video/stream] Failed to start streamer: {e}")
                 print(f"[video/stream] Traceback:\n{traceback.format_exc()}")
-                scrcpy_streamer.stop()
-                scrcpy_streamer = None
+                scrcpy_streamers[device_id].stop()
+                del scrcpy_streamers[device_id]
                 try:
                     await websocket.send_json({"error": str(e)})
                 except Exception:
                     pass
                 return
         else:
-            print("[video/stream] Reusing existing streamer instance")
+            print(f"[video/stream] Reusing streamer for device {device_id}")
 
             # Send ONLY SPS/PPS (not IDR) to initialize decoder
-            # Client will then wait for next live IDR frame (max 1s with i-frame-interval=1)
-            # This avoids issues with potentially corrupted cached IDR frames
-            if scrcpy_streamer.cached_sps and scrcpy_streamer.cached_pps:
-                init_data = scrcpy_streamer.cached_sps + scrcpy_streamer.cached_pps
+            streamer = scrcpy_streamers[device_id]
+            if streamer.cached_sps and streamer.cached_pps:
+                init_data = streamer.cached_sps + streamer.cached_pps
                 await websocket.send_bytes(init_data)
-                print(f"[video/stream] ✓ Sent SPS/PPS ({len(init_data)} bytes), client will wait for live IDR")
+                print(f"[video/stream] Sent SPS/PPS for device {device_id}")
             else:
-                print("[video/stream] ⚠ Warning: No cached SPS/PPS available")
+                print(f"[video/stream] Warning: No cached SPS/PPS for device {device_id}")
+
+    # 获取当前设备的 streamer
+    streamer = scrcpy_streamers[device_id]
 
     # Stream H.264 data to client
     stream_failed = False
@@ -541,15 +636,14 @@ async def video_stream_ws(websocket: WebSocket):
         chunk_count = 0
         while True:
             try:
-                h264_chunk = await scrcpy_streamer.read_h264_chunk()
+                h264_chunk = await streamer.read_h264_chunk()
                 await websocket.send_bytes(h264_chunk)
                 chunk_count += 1
                 if chunk_count % 100 == 0:
-                    print(f"[video/stream] Sent {chunk_count} chunks")
+                    print(f"[video/stream] Device {device_id}: Sent {chunk_count} chunks")
             except ConnectionError as e:
-                print(f"[video/stream] Connection error after {chunk_count} chunks: {e}")
+                print(f"[video/stream] Device {device_id}: Connection error: {e}")
                 stream_failed = True
-                # Don't send error if WebSocket already disconnected
                 try:
                     await websocket.send_json({"error": f"Stream error: {str(e)}"})
                 except Exception:
@@ -557,10 +651,11 @@ async def video_stream_ws(websocket: WebSocket):
                 break
 
     except WebSocketDisconnect:
-        print("[video/stream] Client disconnected")
+        print(f"[video/stream] Device {device_id}: Client disconnected")
     except Exception as e:
         import traceback
-        print(f"[video/stream] Error: {e}")
+
+        print(f"[video/stream] Device {device_id}: Error: {e}")
         print(f"[video/stream] Traceback:\n{traceback.format_exc()}")
         stream_failed = True
         try:
@@ -568,15 +663,15 @@ async def video_stream_ws(websocket: WebSocket):
         except Exception:
             pass
 
-    # Reset global streamer if stream failed
+    # Reset device streamer if stream failed
     if stream_failed:
-        async with scrcpy_lock:
-            print("[video/stream] Stream failed, resetting global streamer...")
-            if scrcpy_streamer is not None:
-                scrcpy_streamer.stop()
-                scrcpy_streamer = None
+        async with scrcpy_locks[device_id]:
+            if device_id in scrcpy_streamers:
+                print(f"[video/stream] Resetting streamer for device {device_id}")
+                scrcpy_streamers[device_id].stop()
+                del scrcpy_streamers[device_id]
 
-    print("[video/stream] Client stream ended")
+    print(f"[video/stream] Device {device_id}: Stream ended")
 
 
 # 静态文件托管 - 使用包内资源定位

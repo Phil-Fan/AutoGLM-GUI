@@ -1,5 +1,17 @@
 import axios from 'redaxios';
 
+export interface Device {
+  id: string;
+  model: string;
+  status: string;
+  connection_type: string;
+  is_initialized: boolean;
+}
+
+export interface DeviceListResponse {
+  devices: Device[];
+}
+
 export interface ChatResponse {
   result: string;
   steps: number;
@@ -132,9 +144,14 @@ export interface TouchUpResponse {
   error?: string;
 }
 
+export async function listDevices(): Promise<DeviceListResponse> {
+  const res = await axios.get<DeviceListResponse>('/api/devices');
+  return res.data;
+}
+
 export async function initAgent(
   config?: InitRequest
-): Promise<{ success: boolean; message: string }> {
+): Promise<{ success: boolean; message: string; device_id?: string }> {
   const res = await axios.post('/api/init', config ?? {});
   return res.data;
 }
@@ -146,6 +163,7 @@ export async function sendMessage(message: string): Promise<ChatResponse> {
 
 export function sendMessageStream(
   message: string,
+  deviceId: string,
   onStep: (event: StepEvent) => void,
   onDone: (event: DoneEvent) => void,
   onError: (event: ErrorEvent) => void
@@ -157,7 +175,7 @@ export function sendMessageStream(
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, device_id: deviceId }),
     signal: controller.signal,
   })
     .then(async response => {
@@ -220,11 +238,12 @@ export async function getStatus(): Promise<StatusResponse> {
   return res.data;
 }
 
-export async function resetChat(): Promise<{
+export async function resetChat(deviceId: string): Promise<{
   success: boolean;
   message: string;
+  device_id?: string;
 }> {
-  const res = await axios.post('/api/reset');
+  const res = await axios.post('/api/reset', { device_id: deviceId });
   return res.data;
 }
 

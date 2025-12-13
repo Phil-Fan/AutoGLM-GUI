@@ -7,10 +7,12 @@ import {
   resetChat,
   getStatus,
   getScreenshot,
+  listDevices,
   type StepEvent,
   type DoneEvent,
   type ErrorEvent,
   type ScreenshotResponse,
+  type Device,
 } from '../api';
 import { ScrcpyPlayer } from '../components/ScrcpyPlayer';
 
@@ -30,26 +32,40 @@ interface Message {
   isStreaming?: boolean; // 标记是否正在流式接收
 }
 
+// 每个设备的独立状态
+interface DeviceState {
+  messages: Message[];
+  loading: boolean;
+  error: string | null;
+  initialized: boolean;
+  currentStream: { close: () => void } | null;
+  screenshot: ScreenshotResponse | null;
+  useVideoStream: boolean;
+  videoStreamFailed: boolean;
+  displayMode: 'auto' | 'video' | 'screenshot';
+  tapFeedback: string | null;
+}
+
 function ChatComponent() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [initialized, setInitialized] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [screenshot, setScreenshot] = useState<ScreenshotResponse | null>(null);
-  const [currentStream, setCurrentStream] = useState<any>(null);
+  // 设备列表和当前选中设备
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [currentDeviceId, setCurrentDeviceId] = useState<string>('');
+
+  // 每个设备的独立状态
+  const [deviceStates, setDeviceStates] = useState<Map<string, DeviceState>>(
+    new Map()
+  );
+
+  // 全局配置（所有设备共享）
   const [config, setConfig] = useState({
     baseUrl: '',
     apiKey: '',
     modelName: '',
   });
   const [showConfig, setShowConfig] = useState(false);
-  const [useVideoStream, setUseVideoStream] = useState(true); // Try video stream first
-  const [videoStreamFailed, setVideoStreamFailed] = useState(false);
-  const [displayMode, setDisplayMode] = useState<
-    'auto' | 'video' | 'screenshot'
-  >('auto'); // User's manual choice
-  const [tapFeedback, setTapFeedback] = useState<string | null>(null);
+
+  // 旧状态保留用于向后兼容（已废弃）
+  const [input, setInput] = useState('');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const screenshotFetchingRef = useRef(false);
@@ -58,6 +74,51 @@ function ChatComponent() {
   const currentThinkingRef = useRef<string[]>([]);
   const currentActionsRef = useRef<any[]>([]);
 
+  // 获取当前设备的状态（如果不存在则返回默认值）
+  const getCurrentDeviceState = (): DeviceState => {
+    return (
+      deviceStates.get(currentDeviceId) || {
+        messages: [],
+        loading: false,
+        error: null,
+        initialized: false,
+        currentStream: null,
+        screenshot: null,
+        useVideoStream: true,
+        videoStreamFailed: false,
+        displayMode: 'auto' as const,
+        tapFeedback: null,
+      }
+    );
+  };
+
+  // 更新特定设备的状态
+  const updateDeviceState = (
+    deviceId: string,
+    updates: Partial<DeviceState>
+  ) => {
+    setDeviceStates(prev => {
+      const newMap = new Map(prev);
+      const currentState = newMap.get(deviceId) || {
+        messages: [],
+        loading: false,
+        error: null,
+        initialized: false,
+        currentStream: null,
+        screenshot: null,
+        useVideoStream: true,
+        videoStreamFailed: false,
+        displayMode: 'auto' as const,
+        tapFeedback: null,
+      };
+      newMap.set(deviceId, { ...currentState, ...updates });
+      return newMap;
+    });
+  };
+
+  // 当前设备状态的快捷访问
+  const currentState = getCurrentDeviceState();
+
   // 滚动到底部
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -65,39 +126,37 @@ function ChatComponent() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [currentState.messages]);
 
-  // 检查初始化状态并自动初始化
+  // 加载设备列表
   useEffect(() => {
-    const initializeAgent = async () => {
+    const loadDevices = async () => {
       try {
-        const status = await getStatus();
-        if (status.initialized) {
-          setInitialized(true);
-        } else {
-          // 尝试自动初始化（使用后端默认值）
-          try {
-            await initAgent();
-            setInitialized(true);
-          } catch {
-            // 自动初始化失败，等待用户手动配置
-            setInitialized(false);
-          }
+        const response = await listDevices();
+        setDevices(response.devices);
+
+        // 自动选择第一个设备（如果当前没有选中设备）
+        if (response.devices.length > 0 && !currentDeviceId) {
+          setCurrentDeviceId(response.devices[0].id);
         }
-      } catch {
-        setInitialized(false);
-        setError('无法连接到后端服务');
+      } catch (error) {
+        console.error('Failed to load devices:', error);
       }
     };
 
-    initializeAgent();
-  }, []);
+    loadDevices();
+    // 每3秒刷新设备列表
+    const interval = setInterval(loadDevices, 3000);
+    return () => clearInterval(interval);
+  }, [currentDeviceId]);
 
   // 截图轮询 (在 fallback 模式或用户手动选择截图模式时运行)
   useEffect(() => {
+    if (!currentDeviceId) return;
+
     const shouldPollScreenshots =
-      displayMode === 'screenshot' ||
-      (displayMode === 'auto' && videoStreamFailed);
+      currentState.displayMode === 'screenshot' ||
+      (currentState.displayMode === 'auto' && currentState.videoStreamFailed);
 
     if (!shouldPollScreenshots) {
       return; // Don't poll screenshots
@@ -111,9 +170,9 @@ function ChatComponent() {
 
       screenshotFetchingRef.current = true;
       try {
-        const data = await getScreenshot();
+        const data = await getScreenshot(currentDeviceId);
         if (data.success) {
-          setScreenshot(data);
+          updateDeviceState(currentDeviceId, { screenshot: data });
         }
       } catch (e) {
         console.error('Failed to fetch screenshot:', e);
@@ -129,11 +188,14 @@ function ChatComponent() {
     const interval = setInterval(fetchScreenshot, 500);
 
     return () => clearInterval(interval);
-  }, [videoStreamFailed, displayMode]);
+  }, [
+    currentDeviceId,
+    currentState.videoStreamFailed,
+    currentState.displayMode,
+  ]);
 
-  // 初始化 Agent
-  const handleInit = async () => {
-    setError(null);
+  // 初始化特定设备的 Agent
+  const handleInit = async (deviceId: string) => {
     try {
       await initAgent({
         model_config: {
@@ -141,17 +203,36 @@ function ChatComponent() {
           api_key: config.apiKey || undefined,
           model_name: config.modelName || undefined,
         },
+        agent_config: {
+          device_id: deviceId,
+        },
       });
-      setInitialized(true);
+      updateDeviceState(deviceId, { initialized: true, error: null });
       setShowConfig(false);
-    } catch {
-      setError('初始化失败，请检查配置或确保后端服务正在运行');
+    } catch (error) {
+      updateDeviceState(deviceId, {
+        error:
+          error instanceof Error
+            ? error.message
+            : '初始化失败，请检查配置或确保后端服务正在运行',
+      });
     }
   };
 
   // 发送消息（流式）
   const handleSend = async () => {
-    if (!input.trim() || loading) return;
+    if (!input.trim() || currentState.loading) return;
+
+    // 检查是否选中了设备
+    if (!currentDeviceId) {
+      alert('请先选择一个设备');
+      return;
+    }
+
+    // 如果设备未初始化，先初始化
+    if (!currentState.initialized) {
+      await handleInit(currentDeviceId);
+    }
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -160,10 +241,14 @@ function ChatComponent() {
       timestamp: new Date(),
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    // 更新设备状态：添加用户消息
+    updateDeviceState(currentDeviceId, {
+      messages: [...currentState.messages, userMessage],
+      loading: true,
+      error: null,
+    });
+
     setInput('');
-    setLoading(true);
-    setError(null);
 
     // 重置当前流式消息的 ref
     currentThinkingRef.current = [];
@@ -180,11 +265,16 @@ function ChatComponent() {
       actions: [],
       isStreaming: true,
     };
-    setMessages(prev => [...prev, agentMessage]);
+
+    // 更新设备状态：添加 Agent 消息占位符
+    updateDeviceState(currentDeviceId, {
+      messages: [...currentState.messages, userMessage, agentMessage],
+    });
 
     // 启动流式接收
     const stream = sendMessageStream(
       userMessage.content,
+      currentDeviceId, // 传递设备 ID
       // onStep
       (event: StepEvent) => {
         console.log('[Chat] Processing step event:', event);
@@ -193,9 +283,13 @@ function ChatComponent() {
         currentThinkingRef.current.push(event.thinking);
         currentActionsRef.current.push(event.action);
 
-        // 再基于 ref 更新状态
-        setMessages(prev =>
-          prev.map(msg =>
+        // 获取最新的设备状态并更新消息
+        setDeviceStates(prev => {
+          const newMap = new Map(prev);
+          const state = newMap.get(currentDeviceId);
+          if (!state) return prev;
+
+          const updatedMessages = state.messages.map(msg =>
             msg.id === agentMessageId
               ? {
                   ...msg,
@@ -204,13 +298,20 @@ function ChatComponent() {
                   steps: event.step,
                 }
               : msg
-          )
-        );
+          );
+
+          newMap.set(currentDeviceId, { ...state, messages: updatedMessages });
+          return newMap;
+        });
       },
       // onDone
       (event: DoneEvent) => {
-        setMessages(prev =>
-          prev.map(msg =>
+        setDeviceStates(prev => {
+          const newMap = new Map(prev);
+          const state = newMap.get(currentDeviceId);
+          if (!state) return prev;
+
+          const updatedMessages = state.messages.map(msg =>
             msg.id === agentMessageId
               ? {
                   ...msg,
@@ -219,15 +320,25 @@ function ChatComponent() {
                   isStreaming: false,
                 }
               : msg
-          )
-        );
-        setLoading(false);
-        setCurrentStream(null);
+          );
+
+          newMap.set(currentDeviceId, {
+            ...state,
+            messages: updatedMessages,
+            loading: false,
+            currentStream: null,
+          });
+          return newMap;
+        });
       },
       // onError
       (event: ErrorEvent) => {
-        setMessages(prev =>
-          prev.map(msg =>
+        setDeviceStates(prev => {
+          const newMap = new Map(prev);
+          const state = newMap.get(currentDeviceId);
+          if (!state) return prev;
+
+          const updatedMessages = state.messages.map(msg =>
             msg.id === agentMessageId
               ? {
                   ...msg,
@@ -236,31 +347,54 @@ function ChatComponent() {
                   isStreaming: false,
                 }
               : msg
-          )
-        );
-        setLoading(false);
-        setCurrentStream(null);
+          );
+
+          newMap.set(currentDeviceId, {
+            ...state,
+            messages: updatedMessages,
+            loading: false,
+            currentStream: null,
+            error: event.message,
+          });
+          return newMap;
+        });
       }
     );
 
-    setCurrentStream(stream);
+    // 保存流对象到设备状态
+    updateDeviceState(currentDeviceId, { currentStream: stream });
   };
 
-  // 重置对话
+  // 重置当前设备的对话
   const handleReset = async () => {
+    if (!currentDeviceId) return;
+
     // 取消正在进行的流式请求
-    if (currentStream) {
-      currentStream.close();
-      setCurrentStream(null);
+    if (currentState.currentStream) {
+      currentState.currentStream.close();
     }
 
-    // 重置所有状态
-    setLoading(false);
-    setMessages([]);
-    setError(null);
+    // 重置设备状态
+    updateDeviceState(currentDeviceId, {
+      messages: [],
+      loading: false,
+      error: null,
+      currentStream: null,
+    });
 
     // 调用后端重置
-    await resetChat();
+    await resetChat(currentDeviceId);
+  };
+
+  // 切换设备
+  const handleDeviceChange = (deviceId: string) => {
+    // 停止当前设备的流
+    if (currentState.currentStream) {
+      currentState.currentStream.close();
+      updateDeviceState(currentDeviceId, { currentStream: null });
+    }
+
+    setCurrentDeviceId(deviceId);
   };
 
   const handleInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -330,10 +464,16 @@ function ChatComponent() {
                   取消
                 </button>
                 <button
-                  onClick={handleInit}
+                  onClick={() => {
+                    if (currentDeviceId) {
+                      handleInit(currentDeviceId);
+                    } else {
+                      alert('请先选择一个设备');
+                    }
+                  }}
                   className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
                 >
-                  确认初始化
+                  确认配置
                 </button>
               </div>
             </div>
@@ -345,23 +485,53 @@ function ChatComponent() {
       <div className="flex flex-col w-full max-w-2xl h-[750px] border border-gray-200 dark:border-gray-700 rounded-2xl shadow-lg bg-white dark:bg-gray-800">
         {/* 头部 */}
         <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 rounded-t-2xl">
-          <h1 className="text-xl font-semibold">AutoGLM Chat</h1>
+          <div className="flex items-center gap-4">
+            <h1 className="text-xl font-semibold">AutoGLM Chat</h1>
+
+            {/* 设备选择器 */}
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-600 dark:text-gray-400">
+                设备:
+              </label>
+              <select
+                value={currentDeviceId}
+                onChange={e => handleDeviceChange(e.target.value)}
+                className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">选择设备</option>
+                {devices.map(device => (
+                  <option key={device.id} value={device.id}>
+                    {device.model} ({device.id})
+                    {device.is_initialized ? ' ✓' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
           <div className="flex gap-2">
-            {!initialized ? (
+            {currentDeviceId && !currentState.initialized ? (
               <button
-                onClick={() => setShowConfig(true)}
+                onClick={() => handleInit(currentDeviceId)}
                 className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center justify-center"
               >
-                配置 Agent
+                初始化设备
               </button>
-            ) : (
+            ) : currentDeviceId ? (
               <span className="px-3 py-1 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded-full text-sm flex items-center justify-center">
                 已初始化
               </span>
-            )}
+            ) : null}
+            <button
+              onClick={() => setShowConfig(true)}
+              className="px-3 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+            >
+              配置
+            </button>
             <button
               onClick={handleReset}
-              className="px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors flex items-center justify-center"
+              disabled={!currentDeviceId}
+              className="px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
             >
               重置
             </button>
@@ -369,22 +539,27 @@ function ChatComponent() {
         </div>
 
         {/* 错误提示 */}
-        {error && (
+        {currentState.error && (
           <div className="mx-4 mt-4 p-3 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded-lg">
-            {error}
+            {currentState.error}
           </div>
         )}
 
         {/* 消息列表 */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {messages.length === 0 && (
+          {!currentDeviceId ? (
             <div className="text-center text-gray-500 dark:text-gray-400 mt-8">
               <p className="text-lg">欢迎使用 AutoGLM Chat</p>
+              <p className="text-sm mt-2">请先选择一个设备</p>
+            </div>
+          ) : currentState.messages.length === 0 ? (
+            <div className="text-center text-gray-500 dark:text-gray-400 mt-8">
+              <p className="text-lg">设备已选择</p>
               <p className="text-sm mt-2">输入任务描述，让 AI 帮你操作手机</p>
             </div>
-          )}
+          ) : null}
 
-          {messages.map(message => (
+          {currentState.messages.map(message => (
             <div
               key={message.id}
               className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
@@ -459,13 +634,19 @@ function ChatComponent() {
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleInputKeyDown}
-              placeholder={initialized ? '输入任务描述...' : '请先初始化 Agent'}
-              disabled={!initialized || loading}
+              placeholder={
+                !currentDeviceId
+                  ? '请先选择设备'
+                  : !currentState.initialized
+                    ? '请先初始化设备'
+                    : '输入任务描述...'
+              }
+              disabled={!currentDeviceId || currentState.loading}
               className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
             />
             <button
               onClick={handleSend}
-              disabled={!initialized || loading || !input.trim()}
+              disabled={!currentDeviceId || currentState.loading || !input.trim()}
               className="px-6 py-3 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
             >
               发送
@@ -477,94 +658,140 @@ function ChatComponent() {
       {/* Real-time Video Stream or Screenshot Fallback */}
       <div className="w-full max-w-xs h-[750px] border border-gray-200 dark:border-gray-700 rounded-2xl shadow-lg bg-gray-900 overflow-hidden relative">
         {/* Mode Switch Button */}
-        <div className="absolute top-2 right-2 z-10 flex gap-1 bg-black/70 rounded-lg p-1">
-          <button
-            onClick={() => setDisplayMode('auto')}
-            className={`px-3 py-1 text-xs rounded transition-colors ${
-              displayMode === 'auto'
-                ? 'bg-blue-500 text-white'
-                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-            }`}
-            title="自动选择最佳显示模式"
-          >
-            自动
-          </button>
-          <button
-            onClick={() => setDisplayMode('video')}
-            className={`px-3 py-1 text-xs rounded transition-colors ${
-              displayMode === 'video'
-                ? 'bg-blue-500 text-white'
-                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-            }`}
-            title="强制使用视频流"
-          >
-            视频流
-          </button>
-          <button
-            onClick={() => setDisplayMode('screenshot')}
-            className={`px-3 py-1 text-xs rounded transition-colors ${
-              displayMode === 'screenshot'
-                ? 'bg-blue-500 text-white'
-                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-            }`}
-            title="使用截图模式 (0.5s刷新)"
-          >
-            截图
-          </button>
-        </div>
+        {currentDeviceId && (
+          <div className="absolute top-2 right-2 z-10 flex gap-1 bg-black/70 rounded-lg p-1">
+            <button
+              onClick={() =>
+                updateDeviceState(currentDeviceId, { displayMode: 'auto' })
+              }
+              className={`px-3 py-1 text-xs rounded transition-colors ${
+                currentState.displayMode === 'auto'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}
+              title="自动选择最佳显示模式"
+            >
+              自动
+            </button>
+            <button
+              onClick={() =>
+                updateDeviceState(currentDeviceId, { displayMode: 'video' })
+              }
+              className={`px-3 py-1 text-xs rounded transition-colors ${
+                currentState.displayMode === 'video'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}
+              title="强制使用视频流"
+            >
+              视频流
+            </button>
+            <button
+              onClick={() =>
+                updateDeviceState(currentDeviceId, {
+                  displayMode: 'screenshot',
+                })
+              }
+              className={`px-3 py-1 text-xs rounded transition-colors ${
+                currentState.displayMode === 'screenshot'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}
+              title="使用截图模式 (0.5s刷新)"
+            >
+              截图
+            </button>
+          </div>
+        )}
 
-        {displayMode === 'video' ||
-        (displayMode === 'auto' && useVideoStream && !videoStreamFailed) ? (
+        {currentDeviceId &&
+        (currentState.displayMode === 'video' ||
+          (currentState.displayMode === 'auto' &&
+            currentState.useVideoStream &&
+            !currentState.videoStreamFailed)) ? (
           <>
             {/* Tap feedback toast */}
-            {tapFeedback && (
+            {currentState.tapFeedback && (
               <div className="absolute top-14 right-2 z-20 px-3 py-2 bg-blue-500 text-white text-sm rounded-lg shadow-lg animate-fade-in">
-                {tapFeedback}
+                {currentState.tapFeedback}
               </div>
             )}
 
             <ScrcpyPlayer
+              deviceId={currentDeviceId}
               className="w-full h-full"
               enableControl={true}
               onFallback={() => {
-                setVideoStreamFailed(true);
-                setUseVideoStream(false);
+                updateDeviceState(currentDeviceId, {
+                  videoStreamFailed: true,
+                  useVideoStream: false,
+                });
               }}
               onTapSuccess={() => {
-                setTapFeedback('Tap executed');
-                setTimeout(() => setTapFeedback(null), 2000);
+                updateDeviceState(currentDeviceId, {
+                  tapFeedback: 'Tap executed',
+                });
+                setTimeout(
+                  () =>
+                    updateDeviceState(currentDeviceId, { tapFeedback: null }),
+                  2000
+                );
               }}
               onTapError={error => {
-                setTapFeedback(`Tap failed: ${error}`);
-                setTimeout(() => setTapFeedback(null), 3000);
+                updateDeviceState(currentDeviceId, {
+                  tapFeedback: `Tap failed: ${error}`,
+                });
+                setTimeout(
+                  () =>
+                    updateDeviceState(currentDeviceId, { tapFeedback: null }),
+                  3000
+                );
               }}
               onSwipeSuccess={() => {
-                setTapFeedback('Swipe executed');
-                setTimeout(() => setTapFeedback(null), 2000);
+                updateDeviceState(currentDeviceId, {
+                  tapFeedback: 'Swipe executed',
+                });
+                setTimeout(
+                  () =>
+                    updateDeviceState(currentDeviceId, { tapFeedback: null }),
+                  2000
+                );
               }}
               onSwipeError={error => {
-                setTapFeedback(`Swipe failed: ${error}`);
-                setTimeout(() => setTapFeedback(null), 3000);
+                updateDeviceState(currentDeviceId, {
+                  tapFeedback: `Swipe failed: ${error}`,
+                });
+                setTimeout(
+                  () =>
+                    updateDeviceState(currentDeviceId, { tapFeedback: null }),
+                  3000
+                );
               }}
               fallbackTimeout={100000}
             />
           </>
-        ) : (
+        ) : currentDeviceId ? (
           <div className="w-full h-full flex items-center justify-center bg-gray-900">
-            {screenshot && screenshot.success ? (
+            {currentState.screenshot && currentState.screenshot.success ? (
               <div className="relative w-full h-full flex items-center justify-center">
                 <img
-                  src={`data:image/png;base64,${screenshot.image}`}
+                  src={`data:image/png;base64,${currentState.screenshot.image}`}
                   alt="Device Screenshot"
                   className="max-w-full max-h-full object-contain"
                   style={{
                     width:
-                      screenshot.width > screenshot.height ? '100%' : 'auto',
+                      currentState.screenshot.width >
+                      currentState.screenshot.height
+                        ? '100%'
+                        : 'auto',
                     height:
-                      screenshot.width > screenshot.height ? 'auto' : '100%',
+                      currentState.screenshot.width >
+                      currentState.screenshot.height
+                        ? 'auto'
+                        : '100%',
                   }}
                 />
-                {screenshot.is_sensitive && (
+                {currentState.screenshot.is_sensitive && (
                   <div className="absolute top-12 right-2 px-2 py-1 bg-yellow-500 text-white text-xs rounded">
                     敏感内容
                   </div>
@@ -572,15 +799,15 @@ function ChatComponent() {
                 {/* Mode indicator */}
                 <div className="absolute bottom-2 left-2 px-2 py-1 bg-blue-500 text-white text-xs rounded">
                   截图模式 (0.5s 刷新)
-                  {displayMode === 'auto' &&
-                    videoStreamFailed &&
+                  {currentState.displayMode === 'auto' &&
+                    currentState.videoStreamFailed &&
                     ' - 视频流不可用'}
                 </div>
               </div>
-            ) : screenshot?.error ? (
+            ) : currentState.screenshot?.error ? (
               <div className="text-center text-red-500 dark:text-red-400">
                 <p className="mb-2">截图失败</p>
-                <p className="text-xs">{screenshot.error}</p>
+                <p className="text-xs">{currentState.screenshot.error}</p>
               </div>
             ) : (
               <div className="text-center text-gray-500 dark:text-gray-400">
@@ -588,6 +815,13 @@ function ChatComponent() {
                 <p>加载中...</p>
               </div>
             )}
+          </div>
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-gray-900">
+            <div className="text-center text-gray-500 dark:text-gray-400">
+              <p className="text-lg">未选择设备</p>
+              <p className="text-sm mt-2">请先选择一个设备</p>
+            </div>
           </div>
         )}
       </div>
