@@ -12,8 +12,7 @@ from phone_agent.model import ModelConfig
 
 if TYPE_CHECKING:
     from AutoGLM_GUI.platforms.adb.video.scrcpy_stream import ScrcpyStreamer
-    from phone_agent import PhoneAgent
-    from phone_agent.agent_ios import IOSAgentConfig, IOSPhoneAgent
+    from phone_agent.agent_ios import IOSAgentConfig
 
 # Agent instances keyed by device_id
 agents: dict[str, Any] = {}

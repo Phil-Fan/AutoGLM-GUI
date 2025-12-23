@@ -1,12 +1,11 @@
 """Device control utilities for iOS automation via WebDriverAgent."""
 
-import subprocess
 import time
-from typing import Optional
 
 from phone_agent.config.apps_ios import APP_PACKAGES_IOS as APP_PACKAGES
 
-SCALE_FACTOR = 3 # 3 for most modern iPhone 
+SCALE_FACTOR = 3  # 3 for most modern iPhone
+
 
 def _get_wda_session_url(wda_url: str, session_id: str | None, endpoint: str) -> str:
     """
@@ -102,7 +101,12 @@ def tap(
                     "id": "finger1",
                     "parameters": {"pointerType": "touch"},
                     "actions": [
-                        {"type": "pointerMove", "duration": 0, "x": x / SCALE_FACTOR, "y": y / SCALE_FACTOR},
+                        {
+                            "type": "pointerMove",
+                            "duration": 0,
+                            "x": x / SCALE_FACTOR,
+                            "y": y / SCALE_FACTOR,
+                        },
                         {"type": "pointerDown", "button": 0},
                         {"type": "pause", "duration": 0.1},
                         {"type": "pointerUp", "button": 0},
@@ -151,7 +155,12 @@ def double_tap(
                     "id": "finger1",
                     "parameters": {"pointerType": "touch"},
                     "actions": [
-                        {"type": "pointerMove", "duration": 0, "x": x / SCALE_FACTOR, "y": y / SCALE_FACTOR},
+                        {
+                            "type": "pointerMove",
+                            "duration": 0,
+                            "x": x / SCALE_FACTOR,
+                            "y": y / SCALE_FACTOR,
+                        },
                         {"type": "pointerDown", "button": 0},
                         {"type": "pause", "duration": 100},
                         {"type": "pointerUp", "button": 0},
@@ -209,7 +218,12 @@ def long_press(
                     "id": "finger1",
                     "parameters": {"pointerType": "touch"},
                     "actions": [
-                        {"type": "pointerMove", "duration": 0, "x": x / SCALE_FACTOR, "y": y / SCALE_FACTOR},
+                        {
+                            "type": "pointerMove",
+                            "duration": 0,
+                            "x": x / SCALE_FACTOR,
+                            "y": y / SCALE_FACTOR,
+                        },
                         {"type": "pointerDown", "button": 0},
                         {"type": "pause", "duration": duration_ms},
                         {"type": "pointerUp", "button": 0},

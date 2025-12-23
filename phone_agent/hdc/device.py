@@ -1,9 +1,6 @@
 """Device control utilities for HarmonyOS automation."""
 
-import os
-import subprocess
 import time
-from typing import List, Optional, Tuple
 
 from phone_agent.config.apps_harmonyos import APP_ABILITIES, APP_PACKAGES
 from phone_agent.config.timing import TIMING_CONFIG
@@ -26,7 +23,7 @@ def get_current_app(device_id: str | None = None) -> str:
         hdc_prefix + ["shell", "hidumper", "-s", "WindowManagerService", "-a", "-a"],
         capture_output=True,
         text=True,
-        encoding="utf-8"
+        encoding="utf-8",
     )
     output = result.stdout
     if not output:
@@ -62,7 +59,7 @@ def tap(
     # HarmonyOS uses uitest uiInput click
     _run_hdc_command(
         hdc_prefix + ["shell", "uitest", "uiInput", "click", str(x), str(y)],
-        capture_output=True
+        capture_output=True,
     )
     time.sleep(delay)
 
@@ -87,7 +84,7 @@ def double_tap(
     # HarmonyOS uses uitest uiInput doubleClick
     _run_hdc_command(
         hdc_prefix + ["shell", "uitest", "uiInput", "doubleClick", str(x), str(y)],
-        capture_output=True
+        capture_output=True,
     )
     time.sleep(delay)
 
@@ -191,7 +188,7 @@ def back(device_id: str | None = None, delay: float | None = None) -> None:
     # HarmonyOS uses uitest uiInput keyEvent Back
     _run_hdc_command(
         hdc_prefix + ["shell", "uitest", "uiInput", "keyEvent", "Back"],
-        capture_output=True
+        capture_output=True,
     )
     time.sleep(delay)
 
@@ -212,7 +209,7 @@ def home(device_id: str | None = None, delay: float | None = None) -> None:
     # HarmonyOS uses uitest uiInput keyEvent Home
     _run_hdc_command(
         hdc_prefix + ["shell", "uitest", "uiInput", "keyEvent", "Home"],
-        capture_output=True
+        capture_output=True,
     )
     time.sleep(delay)
 

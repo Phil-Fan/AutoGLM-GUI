@@ -103,9 +103,7 @@ def _get_screenshot_wda(
     return None
 
 
-def _get_screenshot_idevice(
-    device_id: str | None, timeout: int
-) -> Screenshot | None:
+def _get_screenshot_idevice(device_id: str | None, timeout: int) -> Screenshot | None:
     """
     Capture screenshot using idevicescreenshot (libimobiledevice).
 
@@ -126,9 +124,7 @@ def _get_screenshot_idevice(
             cmd.extend(["-u", device_id])
         cmd.append(temp_path)
 
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout
-        )
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
 
         if result.returncode == 0 and os.path.exists(temp_path):
             # Read and encode image

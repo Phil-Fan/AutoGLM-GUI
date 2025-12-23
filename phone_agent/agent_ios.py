@@ -5,7 +5,7 @@ import traceback
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from phone_agent.actions.handler import do, finish, parse_action
+from phone_agent.actions.handler import finish, parse_action
 from phone_agent.actions.handler_ios import IOSActionHandler
 from phone_agent.config import get_messages, get_system_prompt
 from phone_agent.model import ModelClient, ModelConfig
@@ -87,7 +87,7 @@ class IOSPhoneAgent:
                 if self.agent_config.verbose:
                     print(f"✅ Created WDA session: {session_id}")
             elif self.agent_config.verbose:
-                print(f"⚠️  Using default WDA session (no explicit session ID)")
+                print("⚠️  Using default WDA session (no explicit session ID)")
 
         self.action_handler = IOSActionHandler(
             wda_url=self.agent_config.wda_url,

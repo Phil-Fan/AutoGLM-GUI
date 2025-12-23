@@ -1,7 +1,6 @@
 """Device factory for selecting ADB or HDC based on device type."""
 
 from enum import Enum
-from typing import Any
 
 
 class DeviceType(Enum):

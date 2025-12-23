@@ -99,7 +99,11 @@ async def connect_device(sid: str, data: dict | None) -> None:
     try:
         from AutoGLM_GUI.state import agent_types, known_device_types
 
-        if device_id and (agent_types.get(device_id) or known_device_types.get(device_id)) == "ios":
+        if (
+            device_id
+            and (agent_types.get(device_id) or known_device_types.get(device_id))
+            == "ios"
+        ):
             return
     except Exception:
         pass

@@ -18,7 +18,7 @@ router = APIRouter()
 
 @router.get("/api/devices", response_model=DeviceListResponse)
 def list_devices() -> DeviceListResponse:
-    """列出所有 ADB 设备。"""
+    """列出所有设备。"""
     from AutoGLM_GUI.platforms import ops as platform_ops
 
     devices = platform_ops.list_devices(initialized_device_ids=set(agents.keys()))
