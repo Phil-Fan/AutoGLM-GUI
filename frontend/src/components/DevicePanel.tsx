@@ -11,8 +11,6 @@ import {
   MonitorPlay,
   Fingerprint,
   ArrowUpDown,
-  ChevronLeft,
-  ChevronRight,
 } from 'lucide-react';
 import { ScrcpyPlayer } from './ScrcpyPlayer';
 import type {
@@ -49,6 +47,7 @@ interface GlobalConfig {
 interface DevicePanelProps {
   deviceId: string;
   deviceName: string;
+  deviceType?: string; // 设备类型: 'adb' (Android) 或 'ios'
   config: GlobalConfig | null;
   isVisible: boolean;
   isConfigured: boolean;
@@ -57,6 +56,7 @@ interface DevicePanelProps {
 export function DevicePanel({
   deviceId,
   deviceName,
+  deviceType,
   config,
   isConfigured,
 }: DevicePanelProps) {
@@ -69,9 +69,10 @@ export function DevicePanel({
   const [screenshot, setScreenshot] = useState<ScreenshotResponse | null>(null);
   const [useVideoStream, setUseVideoStream] = useState(true);
   const [videoStreamFailed, setVideoStreamFailed] = useState(false);
+  // iOS 设备直接使用截图模式，不支持视频流
   const [displayMode, setDisplayMode] = useState<
     'auto' | 'video' | 'screenshot'
-  >('auto');
+  >(deviceType === 'ios' ? 'screenshot' : 'auto');
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
   const [feedbackType, setFeedbackType] = useState<
     'tap' | 'swipe' | 'error' | 'success'
@@ -102,7 +103,6 @@ export function DevicePanel({
   }, []);
 
   const [showControlArea, setShowControlArea] = useState(false);
-  const [showControls, setShowControls] = useState(false);
   const controlsTimeoutRef = useRef<number | null>(null);
 
   const handleMouseEnter = () => {
@@ -125,10 +125,6 @@ export function DevicePanel({
       }
     };
   }, []);
-
-  const toggleControls = () => {
-    setShowControls(prev => !prev);
-  };
 
   const chatStreamRef = useRef<{ close: () => void } | null>(null);
   const videoStreamRef = useRef<{ close: () => void } | null>(null);
@@ -567,74 +563,55 @@ export function DevicePanel({
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
       >
-        {/* Toggle and controls - shown on hover */}
+        {/* Mode controls - shown on hover */}
         <div
           className={`absolute top-4 right-4 z-10 transition-opacity duration-200 ${
             showControlArea ? 'opacity-100' : 'opacity-0 pointer-events-none'
           }`}
         >
-          <div className="flex items-center gap-2">
-            {/* Control buttons - slide in/out */}
-            <div
-              className={`flex items-center gap-1 bg-popover/90 backdrop-blur rounded-xl p-1 shadow-lg border border-border transition-all duration-300 ${
-                showControls
-                  ? 'opacity-100 translate-x-0'
-                  : 'opacity-0 translate-x-4 pointer-events-none'
-              }`}
-            >
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => toggleDisplayMode('auto')}
-                className={`h-7 px-3 text-xs rounded-lg transition-colors ${
-                  displayMode === 'auto'
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-foreground hover:bg-accent hover:text-accent-foreground'
-                }`}
-              >
-                {t.devicePanel.auto}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => toggleDisplayMode('video')}
-                className={`h-7 px-3 text-xs rounded-lg transition-colors ${
-                  displayMode === 'video'
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-foreground hover:bg-accent hover:text-accent-foreground'
-                }`}
-              >
-                <Video className="w-3 h-3 mr-1" />
-                {t.devicePanel.video}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => toggleDisplayMode('screenshot')}
-                className={`h-7 px-3 text-xs rounded-lg transition-colors ${
-                  displayMode === 'screenshot'
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-foreground hover:bg-accent hover:text-accent-foreground'
-                }`}
-              >
-                <ImageIcon className="w-3 h-3 mr-1" />
-                {t.devicePanel.image}
-              </Button>
-            </div>
-
-            {/* Toggle button - visible when control area is shown */}
+          <div className="flex items-center gap-1 bg-popover/90 backdrop-blur rounded-xl p-1 shadow-lg border border-border">
+            {/* Android 设备显示 auto 和 video 按钮 */}
+            {deviceType !== 'ios' && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => toggleDisplayMode('auto')}
+                  className={`h-7 px-3 text-xs rounded-lg transition-colors ${
+                    displayMode === 'auto'
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-foreground hover:bg-accent hover:text-accent-foreground'
+                  }`}
+                >
+                  {t.devicePanel.auto}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => toggleDisplayMode('video')}
+                  className={`h-7 px-3 text-xs rounded-lg transition-colors ${
+                    displayMode === 'video'
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-foreground hover:bg-accent hover:text-accent-foreground'
+                  }`}
+                >
+                  <Video className="w-3 h-3 mr-1" />
+                  {t.devicePanel.video}
+                </Button>
+              </>
+            )}
             <Button
               variant="ghost"
-              size="icon"
-              onClick={toggleControls}
-              className="h-8 w-8 rounded-full bg-popover/90 backdrop-blur border border-border shadow-lg hover:bg-accent"
-              title={showControls ? 'Hide controls' : 'Show controls'}
+              size="sm"
+              onClick={() => toggleDisplayMode('screenshot')}
+              className={`h-7 px-3 text-xs rounded-lg transition-colors ${
+                displayMode === 'screenshot'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-foreground hover:bg-accent hover:text-accent-foreground'
+              }`}
             >
-              {showControls ? (
-                <ChevronRight className="w-4 h-4" />
-              ) : (
-                <ChevronLeft className="w-4 h-4" />
-              )}
+              <ImageIcon className="w-3 h-3 mr-1" />
+              {t.devicePanel.image}
             </Button>
           </div>
         </div>
@@ -645,17 +622,26 @@ export function DevicePanel({
             variant="secondary"
             className="bg-white/90 text-slate-700 border border-slate-200 dark:bg-slate-900/90 dark:text-slate-300 dark:border-slate-700"
           >
-            {displayMode === 'auto' && t.devicePanel.auto}
-            {displayMode === 'video' && (
-              <>
-                <MonitorPlay className="w-3 h-3 mr-1" />
-                {t.devicePanel.video}
-              </>
-            )}
-            {displayMode === 'screenshot' && (
+            {deviceType === 'ios' ? (
               <>
                 <ImageIcon className="w-3 h-3 mr-1" />
-                {t.devicePanel.imageRefresh}
+                {t.devicePanel.image}
+              </>
+            ) : (
+              <>
+                {displayMode === 'auto' && t.devicePanel.auto}
+                {displayMode === 'video' && (
+                  <>
+                    <MonitorPlay className="w-3 h-3 mr-1" />
+                    {t.devicePanel.video}
+                  </>
+                )}
+                {displayMode === 'screenshot' && (
+                  <>
+                    <ImageIcon className="w-3 h-3 mr-1" />
+                    {t.devicePanel.imageRefresh}
+                  </>
+                )}
               </>
             )}
           </Badge>

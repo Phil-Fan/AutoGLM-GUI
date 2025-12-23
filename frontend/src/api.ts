@@ -7,6 +7,7 @@ export interface Device {
   connection_type: string;
   is_initialized: boolean;
   serial?: string; // 设备真实序列号
+  device_type?: string; // 设备类型: 'adb' (Android) 或 'ios'
 }
 
 export interface DeviceListResponse {

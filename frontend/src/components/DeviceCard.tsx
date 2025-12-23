@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Wifi, WifiOff, CheckCircle2, Smartphone, Loader2 } from 'lucide-react';
+import { Wifi, WifiOff, CheckCircle2, Smartphone, Loader2, Apple } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -10,6 +10,7 @@ interface DeviceCardProps {
   model: string;
   status: string;
   connectionType?: string;
+  deviceType?: string; // 'adb' (Android) 或 'ios'
   isInitialized: boolean;
   isActive: boolean;
   onClick: () => void;
@@ -22,12 +23,14 @@ export function DeviceCard({
   model,
   status,
   connectionType,
+  deviceType,
   isInitialized,
   isActive,
   onClick,
   onConnectWifi,
   onDisconnectWifi,
 }: DeviceCardProps) {
+  const isIos = deviceType === 'ios';
   const t = useTranslation();
   const isOnline = status === 'device';
   const isUsb = connectionType === 'usb';
@@ -99,15 +102,6 @@ export function DeviceCard({
         )}
 
         <div className="flex items-center gap-3 pl-2">
-          {/* Status indicator */}
-          <div
-            className={`relative flex-shrink-0 ${
-              isOnline ? 'status-online' : 'status-offline'
-            } w-3 h-3 rounded-full transition-all ${
-              isActive ? 'scale-110' : ''
-            }`}
-          />
-
           {/* Device icon and info */}
           <div className="flex-1 min-w-0 flex flex-col justify-center gap-0.5">
             <div className="flex items-center gap-2">
@@ -139,65 +133,78 @@ export function DeviceCard({
             </span>
           </div>
 
-          {/* Action buttons */}
-          <div className="flex items-center gap-1">
-            {isUsb && onConnectWifi && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleWifiClick}
-                disabled={loading}
-                className={`h-8 w-8 rounded-full ${
-                  isActive
-                    ? 'bg-[#1d9bf0]/10 text-[#1d9bf0] hover:bg-[#1d9bf0]/20'
-                    : 'text-slate-400 dark:text-slate-500 hover:text-[#1d9bf0] dark:hover:text-[#1d9bf0] hover:bg-slate-100 dark:hover:bg-slate-800'
-                }`}
-                title={t.deviceCard.connectViaWifi}
-              >
-                {loading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Wifi className="w-4 h-4" />
-                )}
-              </Button>
-            )}
+          {/* Status indicators */}
+          <div className="flex items-center gap-1.5">
+            {/* Device type icon */}
+            <div
+              className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
+                isOnline
+                  ? isIos
+                    ? 'bg-slate-100 dark:bg-slate-800'
+                    : 'bg-green-100 dark:bg-green-900/30'
+                  : 'bg-slate-50 dark:bg-slate-900'
+              }`}
+              title={isIos ? 'iOS' : 'Android'}
+            >
+              {isIos ? (
+                <Apple className="w-3.5 h-3.5 text-slate-600 dark:text-slate-400" />
+              ) : (
+                <Smartphone className="w-3.5 h-3.5 text-green-600 dark:text-green-400" />
+              )}
+            </div>
 
-            {isRemote && onDisconnectWifi && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleDisconnectClick}
-                disabled={loading}
-                className={`h-8 w-8 rounded-full ${
-                  isActive
-                    ? 'bg-red-500/10 text-red-500 hover:bg-red-500/20'
-                    : 'text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-500 hover:bg-slate-100 dark:hover:bg-slate-800'
-                }`}
-                title={t.deviceCard.disconnectWifi}
-              >
-                {loading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <WifiOff className="w-4 h-4" />
-                )}
-              </Button>
-            )}
-
-            {/* Initialization status badge */}
+            {/* Initialized status */}
             {isInitialized && (
-              <Badge
-                variant="success"
-                className={`text-xs ${
-                  isActive
-                    ? 'bg-green-500/10 text-green-600 dark:text-green-400'
-                    : ''
-                }`}
+              <div
+                className="w-6 h-6 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center flex-shrink-0"
+                title={t.deviceCard.ready}
               >
-                <CheckCircle2 className="w-3 h-3 mr-1" />
-                {t.deviceCard.ready}
-              </Badge>
+                <CheckCircle2 className="w-3.5 h-3.5 text-green-600 dark:text-green-400" />
+              </div>
             )}
           </div>
+
+          {isUsb && onConnectWifi && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleWifiClick}
+              disabled={loading}
+              className={`h-8 w-8 rounded-full ${
+                isActive
+                  ? 'bg-[#1d9bf0]/10 text-[#1d9bf0] hover:bg-[#1d9bf0]/20'
+                  : 'text-slate-400 dark:text-slate-500 hover:text-[#1d9bf0] dark:hover:text-[#1d9bf0] hover:bg-slate-100 dark:hover:bg-slate-800'
+              }`}
+              title={t.deviceCard.connectViaWifi}
+            >
+              {loading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Wifi className="w-4 h-4" />
+              )}
+            </Button>
+          )}
+
+          {isRemote && onDisconnectWifi && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleDisconnectClick}
+              disabled={loading}
+              className={`h-8 w-8 rounded-full ${
+                isActive
+                  ? 'bg-red-500/10 text-red-500 hover:bg-red-500/20'
+                  : 'text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-500 hover:bg-slate-100 dark:hover:bg-slate-800'
+              }`}
+              title={t.deviceCard.disconnectWifi}
+            >
+              {loading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <WifiOff className="w-4 h-4" />
+              )}
+            </Button>
+          )}
         </div>
       </div>
 

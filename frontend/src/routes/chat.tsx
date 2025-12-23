@@ -441,6 +441,7 @@ function ChatComponent() {
               <DevicePanel
                 deviceId={device.id}
                 deviceName={device.model}
+                deviceType={device.device_type}
                 config={config}
                 isVisible={device.id === currentDeviceId}
                 isConfigured={!!config?.base_url}

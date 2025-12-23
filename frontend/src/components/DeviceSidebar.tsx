@@ -143,6 +143,7 @@ export function DeviceSidebar({
                 model={device.model}
                 status={device.status}
                 connectionType={device.connection_type}
+                deviceType={device.device_type}
                 isInitialized={device.is_initialized}
                 isActive={currentDeviceId === device.id}
                 onClick={() => onSelectDevice(device.id)}
