@@ -1,3 +1,0 @@
-[submodule "AutoGLM_GUI/platforms/ios/setup/WebDriverAgent"]
-	path = AutoGLM_GUI/platforms/ios/setup/WebDriverAgent
-	url = https://github.com/appium/WebDriverAgent.git
