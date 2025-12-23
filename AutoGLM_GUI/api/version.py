@@ -99,7 +99,7 @@ def fetch_latest_release() -> dict[str, Any] | None:
     except urllib.error.HTTPError as e:
         if e.code == 403:
             logger.warning(
-                f"GitHub API rate limit exceeded (HTTP 403), using cached data if available"
+                "GitHub API rate limit exceeded (HTTP 403), using cached data if available"
             )
         else:
             logger.warning(f"GitHub API HTTP error {e.code}: {e.reason}")

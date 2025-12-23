@@ -12,6 +12,7 @@ async def _wait_process(p):
         return await asyncio.to_thread(p.wait)
     return await p.wait()
 
+
 async def get_udids() -> list[str]:
     try:
         output = await asyncio.to_thread(
@@ -28,6 +29,7 @@ async def get_udids() -> list[str]:
         print("❌ Failed to run idevice_id -l", file=sys.stderr)
         return []
 
+
 async def setup():
     udids = await get_udids()
 
@@ -42,9 +44,12 @@ async def setup():
         # 启动 WebDriverAgent
         xcode_cmd = [
             "xcodebuild",
-            "-project", "WebDriverAgent/WebDriverAgent.xcodeproj",
-            "-scheme", "WebDriverAgentRunner",
-            "-destination", f"platform=iOS,id={udid}",
+            "-project",
+            "WebDriverAgent/WebDriverAgent.xcodeproj",
+            "-scheme",
+            "WebDriverAgentRunner",
+            "-destination",
+            f"platform=iOS,id={udid}",
             "test",
         ]
         p1 = await spawn_process(xcode_cmd)
@@ -59,6 +64,7 @@ async def setup():
 
     # 等待所有子进程
     await asyncio.gather(*[_wait_process(p) for p in processes])
+
 
 if __name__ == "__main__":
     asyncio.run(setup())

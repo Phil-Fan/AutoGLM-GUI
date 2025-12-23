@@ -1,7 +1,13 @@
 import React, { useState } from 'react';
-import { Wifi, WifiOff, CheckCircle2, Smartphone, Loader2, Apple } from 'lucide-react';
+import {
+  Wifi,
+  WifiOff,
+  CheckCircle2,
+  Smartphone,
+  Loader2,
+  Apple,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from './ConfirmDialog';
 import { useTranslation } from '../lib/i18n-context';
 

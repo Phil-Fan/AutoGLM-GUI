@@ -38,7 +38,7 @@ function Footer() {
             setShowUpdateBadge(data.has_update);
             return;
           }
-        } catch (e) {
+        } catch {
           // Invalid cache, continue to fetch
         }
       }
