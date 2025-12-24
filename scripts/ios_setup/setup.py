@@ -56,9 +56,9 @@ async def setup():
         processes.append(p1)
 
         # 等 2 秒再启动 iproxy
-        await asyncio.sleep(2)
+        await asyncio.sleep(5)
 
-        iproxy_cmd = ["iproxy", str(port), "8100", udid]
+        iproxy_cmd = ["iproxy", str(port), "8100"]
         p2 = await spawn_process(iproxy_cmd)
         processes.append(p2)
 
